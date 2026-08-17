@@ -483,7 +483,7 @@ class DiagnosticAgent:
             execution_time_ms=exec_ms,
             summary=f"Primary Differential: {top_diag} ({differentials[0].probability}%). {pathway or 'Standard Workup'}",
             details={
-                "differentials": [d.dict() for d in differentials],
+                "differentials": [d.model_dump() for d in differentials],
                 "critical_pathway": pathway,
                 "recommended_labs": list(set(recommended_labs)),
                 "recommended_imaging": list(set(recommended_imaging))
@@ -547,7 +547,7 @@ class ClinicalPharmacistAgent:
             execution_time_ms=exec_ms,
             summary=f"Identified {len(alerts)} safety alerts ({crit_count} Critical/High). {len(dosing_adjustments)} dosing guidance items.",
             details={
-                "alerts": [a.dict() for a in alerts],
+                "alerts": [a.model_dump() for a in alerts],
                 "dosing_adjustments": dosing_adjustments,
                 "contraindications_count": len(alerts),
                 "safety_cleared": crit_count == 0
@@ -664,7 +664,7 @@ class TelemetryStore:
 
     @classmethod
     def record_override(cls, req: OverrideRequest):
-        entry = req.dict()
+        entry = req.model_dump()
         entry["timestamp"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         cls.overrides.append(entry)
 
@@ -746,12 +746,12 @@ async def run_triage_pipeline(patient: PatientIntake):
 
 @app.post("/api/triage/analyze-image", response_model=OrchestrationOutput, tags=["Triage Pipeline"])
 async def run_image_triage_pipeline(payload: ImageIntakePayload):
-    patient_data = PatientIntake(**payload.dict(exclude={'image_base64'}))
+    patient_data = PatientIntake(**payload.model_dump(exclude={'image_base64'}))
     return await MultiAgentOrchestrator.process_patient(patient_data, payload.image_base64)
 
 @app.get("/api/patients/sample", tags=["Presets"])
 async def get_preset_cases():
-    return {k: v.dict() for k, v in PRESET_CASES.items()}
+    return {k: v.model_dump() for k, v in PRESET_CASES.items()}
 
 @app.get("/api/system/metrics", tags=["Telemetry"])
 async def get_system_metrics():

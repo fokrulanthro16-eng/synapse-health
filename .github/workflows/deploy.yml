@@ -28,7 +28,7 @@ jobs:
 
       - name: Execute Pytest Test Suite
         run: |
-          python -m pytest test_app.py -v --tb=short
+          pytest test_app.py -v
 
   build-docker:
     name: Build & Validate Docker Container
