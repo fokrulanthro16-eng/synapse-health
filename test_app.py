@@ -2,6 +2,7 @@
 Automated Pytest Test Suite for SynapseHealth Clinical Triage Engine
 """
 
+import asyncio
 import pytest
 from fastapi.testclient import TestClient
 from app import (
@@ -69,8 +70,7 @@ def test_esi_evaluation_level_2():
 # 2. UNIT TESTS: MICRO-AGENTS & VISION ENGINE
 # ==========================================
 
-@pytest.mark.asyncio
-async def test_triage_acuity_agent():
+def test_triage_acuity_agent():
     patient = PatientIntake(
         name="Test Patient", age=45, gender="Male",
         chief_complaint="Shortness of breath",
@@ -81,13 +81,12 @@ async def test_triage_acuity_agent():
             gcs=15, on_supplemental_o2=False
         )
     )
-    res = await TriageAcuityAgent.analyze(patient)
+    res = asyncio.run(TriageAcuityAgent.analyze(patient))
     assert res.agent_name == "Triage Acuity Agent"
     assert "esi_level" in res.details
     assert res.confidence >= 0.8
 
-@pytest.mark.asyncio
-async def test_diagnostic_agent_stemi():
+def test_diagnostic_agent_stemi():
     patient = PatientIntake(
         name="STEMI Test", age=60, gender="Male",
         chief_complaint="Severe retrosternal pain radiating to left arm",
@@ -98,14 +97,13 @@ async def test_diagnostic_agent_stemi():
             gcs=15, on_supplemental_o2=False
         )
     )
-    res = await DiagnosticAgent.analyze(patient, {"esi_level": 2})
+    res = asyncio.run(DiagnosticAgent.analyze(patient, {"esi_level": 2}))
     assert res.agent_name == "Diagnostic Reasoning Agent"
     assert len(res.details["differentials"]) > 0
     top_cond = res.details["differentials"][0]["condition"]
     assert "Coronary Syndrome" in top_cond or "STEMI" in top_cond
 
-@pytest.mark.asyncio
-async def test_clinical_pharmacist_agent_allergy():
+def test_clinical_pharmacist_agent_allergy():
     patient = PatientIntake(
         name="Allergy Test", age=30, gender="Female",
         chief_complaint="Fever and dysuria",
@@ -120,17 +118,15 @@ async def test_clinical_pharmacist_agent_allergy():
         medical_history=["Chronic Kidney Disease"]
     )
     diag_details = {"differentials": [{"condition": "Severe Sepsis", "icd10": "A41.9", "probability": 80.0, "red_flag": True}]}
-    res = await ClinicalPharmacistAgent.analyze(patient, diag_details)
+    res = asyncio.run(ClinicalPharmacistAgent.analyze(patient, diag_details))
     assert res.agent_name == "Clinical Pharmacist Agent"
     alerts = res.details["alerts"]
     assert any("Penicillin" in a["medication"] for a in alerts)
     assert any("Metformin" in a["medication"] for a in alerts)
 
-@pytest.mark.asyncio
-async def test_vision_diagnostic_agent():
-    # Simple 10x10 dummy base64 pixel image
+def test_vision_diagnostic_agent():
     dummy_b64 = "data:image/png;base64,iVBORw0KGgoAAAANSU5GGhAAAABJREFUeJzs0SERgDAUA8E9B6SgBAUoSgISUJA0M2H3s0x3v7v+c7m7y+3uLrf7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7v7vwB4xgEN7GgqEwAAAABJRU5ErkJggg=="
-    res = await VisionDiagnosticAgent.analyze_image_features(dummy_b64, "Erythematous skin rash")
+    res = asyncio.run(VisionDiagnosticAgent.analyze_image_features(dummy_b64, "Erythematous skin rash"))
     assert res.agent_name == "Vision Diagnostic Agent"
     assert "visual_findings" in res.details
     assert res.confidence > 0.5
@@ -185,6 +181,35 @@ def test_api_post_triage_analyze():
     assert "esi_level" in data
     assert "acuity_label" in data
     assert data["triage_agent"]["agent_name"] == "Triage Acuity Agent"
+
+def test_api_post_triage_analyze_image():
+    payload = {
+        "name": "Vision Test Patient",
+        "age": 35,
+        "gender": "Female",
+        "chief_complaint": "Acute skin rash with redness",
+        "symptoms": ["Erythema"],
+        "vitals": {
+            "heart_rate": 78,
+            "bp_systolic": 120,
+            "bp_diastolic": 80,
+            "spo2": 99.0,
+            "temperature_c": 37.0,
+            "respiratory_rate": 16,
+            "gcs": 15,
+            "on_supplemental_o2": False
+        },
+        "medical_history": [],
+        "current_medications": [],
+        "allergies": [],
+        "image_base64": "data:image/png;base64,iVBORw0KGgoAAAANSU5GGhAAAABJREFUeJzs0SERgDAUA8E9B6SgBAUoSgISUJA0M2H3s0x3v7v+c7m7y+3uLrf7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7v7vwB4xgEN7GgqEwAAAABJRU5ErkJggg=="
+    }
+    response = client.post("/api/triage/analyze-image", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "esi_level" in data
+    assert data["vision_agent"] is not None
+    assert data["vision_agent"]["agent_name"] == "Vision Diagnostic Agent"
 
 def test_api_post_override():
     override_payload = {
